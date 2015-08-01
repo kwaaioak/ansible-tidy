@@ -85,6 +85,11 @@ options:
             - Tidy files whose size is equal to or greater than the specified size. 
               Unqualified values are in bytes, but b, k, m, g, and t can be appended to specify bytes, kilobytes, megabytes, gigabytes, and terabytes, respectively. 
               Size is not evaluated for directories.
+    dryrun:
+        required: false
+        default: false
+        description:
+            - Don't actually remove anything, just report what would have been deleted if dryrun was not set to true
     timestamp:
         required: false
         default: "atime"
@@ -144,7 +149,8 @@ def main():
                 rmdirs      = dict(default='no', type='bool'),
                 size        = dict(default=0, type='str'),
                 timestamp   = dict(default="atime", choices=['atime','mtime','ctime'], type='str'),
-                silent      = dict(default='no', type='bool')
+                silent      = dict(default='no', type='bool'),
+                dryrun      = dict(default='no', type='bool')
             ),
             supports_check_mode = True
     )
@@ -205,7 +211,8 @@ def main():
     
     for f in files_to_delete:
         try:
-            os.remove(f)
+            if not params['dryrun']:
+                os.remove(f)
             deleted_files.append(f)
         except Exception, e:
             if params['silent']:
@@ -215,7 +222,7 @@ def main():
     for d in dirs_to_delete:
         if os.path.exists(d):
             try:
-                if params['force'] or len(os.listdir(d)) == 0:
+                if not params['dryrun'] and (params['force'] or len(os.listdir(d)) == 0):
                     if os.path.islink(d):
                         os.remove(d)
                     else:
