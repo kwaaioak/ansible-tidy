@@ -90,6 +90,18 @@ options:
         default: false
         description:
             - Don't actually remove anything, just report what would have been deleted if dryrun was not set to true
+    keep:
+        required: false
+        default: "0"
+        description:
+            - Keeps a certain number of files and directories after other filters have been applied.
+              The files kept are based on the sort order.
+    sort:
+        required: false
+        default: "name"
+        choices: [ "name", "mtime", "atime", "ctime" ]
+        description:
+            - Set the mechanism used to sort files when determining which ones to keep.
     timestamp:
         required: false
         default: "atime"
@@ -111,6 +123,9 @@ EXAMPLES = '''
 
 # Delete on /var/log files equal or greater than 10 megabytes ending with .log or .log.gz
 - tidy: path="/var/tmp" matches="*.log","*.log.gz" size="10m"
+
+# Purge all but the five latest releases based on lexicographically sorted release numbers
+- tidy: path="/opt/product" matches="release-*" keep="5" rmdirs=yes force=yes
 '''
 
 
@@ -137,7 +152,13 @@ def sizefilter(path, size=0):
         return True
     return False
 
-                        
+def filesort(path, attribute):
+    if attribute == 'name':
+        convert = lambda text: int(text) if text.isdigit() else text
+        alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
+        return alphanum_key(path)
+    return os.stat(path).__getattribute__("st_%s" % attribute)
+
 def main():
     module = AnsibleModule(
             argument_spec   = dict(
@@ -150,7 +171,9 @@ def main():
                 size        = dict(default=0, type='str'),
                 timestamp   = dict(default="atime", choices=['atime','mtime','ctime'], type='str'),
                 silent      = dict(default='no', type='bool'),
-                dryrun      = dict(default='no', type='bool')
+                dryrun      = dict(default='no', type='bool'),
+                keep        = dict(default=0, type='int'),
+                sort        = dict(default='name', choices=['name', 'mtime', 'atime', 'ctime'], type='str')
             ),
             supports_check_mode = True
     )
@@ -198,8 +221,12 @@ def main():
         if pfilter(fsobj, params['matches']) and agefilter(fsname, age, params['timestamp']) and sizefilter(fsname, size):
             files_to_delete.append(fsname)
     
-    files_to_delete.sort()
-    dirs_to_delete.sort(reverse=not params['force'])
+    files_to_delete.sort(key=lambda x: filesort(x, params['sort']))
+    dirs_to_delete.sort(reverse=not params['force'], key=lambda x: filesort(x, params['sort']))
+    
+    if params['keep'] > 0:
+        del files_to_delete[-params['keep']:]
+        del dirs_to_delete[-params['keep']:]
     
     if module.check_mode == True:
         if len(files_to_delete) > 0 or len(dirs_to_delete) > 0:
