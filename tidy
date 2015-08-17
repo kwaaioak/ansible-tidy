@@ -149,7 +149,9 @@ def sizefilter(path, size=0):
 
 def filesort(path, attribute):
     if attribute == 'name':
-        return path
+        convert = lambda text: int(text) if text.isdigit() else text
+        alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
+        return alphanum_key(path)
     return os.stat(path).__getattribute__("st_%s" % attribute)
 
 def main():
